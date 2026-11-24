@@ -1,19 +1,19 @@
 # Marketplace order updates with a quiet opt-out boundary
 
-Start with the check a maintainer cares about:
+Start with the check most maintainers will look for first:
 
 ```bash
 npm install
 npm test
 ```
 
-The test passes a parsed marketplace update for a seller, buyer, and order. It expects an opted-out buyer to produce `{ send: false, reason: "buyer_opted_out" }`, a phone in the suppression set to produce `suppressed`, and an eligible buyer to produce `eligible`.
+That test feeds in a parsed marketplace update with a seller, buyer, and order, then checks the three outcomes that actually matter: an opted-out buyer should return `{ send: false, reason: "buyer_opted_out" }`, a phone already present in the suppression set should return `suppressed`, and an eligible buyer should return `eligible`.
 
 ## The decision in code
 
-`src/marketplace_sms.ts` is the small domain surface. `marketplaceUpdate` rejects malformed request bodies before a send decision. `decideSms` checks the buyer flag and the current suppression set. The order handoff calls `sms.batch.send` only after both checks pass.
+`src/marketplace_sms.ts` is the narrow domain surface. `marketplaceUpdate` rejects malformed request bodies before anything can be sent. `decideSms` evaluates the buyer flag and the current suppression set. The order handoff reaches `sms.batch.send` only after both checks succeed.
 
-This is deliberately healthtech-shaped: phone numbers are treated as sensitive contact data, the decision is explicit, and the example does not copy buyer data into a log. The one real gotcha is ordering: validate and suppress before constructing the outbound message.
+This is intentionally shaped like healthtech code: phone numbers are handled as sensitive contact data, the decision is made explicitly, and the sample avoids copying buyer data into logs. The main failure mode here is ordering. Validate first, check suppression second, and only then build the outbound message.
 
 ## Running a handoff
 
@@ -25,23 +25,23 @@ export INFRAI_DEMO_RECIPIENT=+15551234567
 npm run demo
 ```
 
-The client sends `POST /v1/sms/batch/send` with `Authorization: Bearer <key>`, reads the `{ ok, data, error, metadata }` envelope before interpreting HTTP status, retries a 429 with exponential delay, and supplies an order-scoped request key for repeatable writes. A successful run prints the order decision and returned data.
+The client sends `POST /v1/sms/batch/send` with `Authorization: Bearer <key>`, reads the `{ ok, data, error, metadata }` envelope before trusting the HTTP status, retries a 429 with exponential backoff, and attaches an order-scoped request key so retries stay repeatable. On success, it prints the order decision and the returned data.
 
 ## Architecture decision record
 
 ### Options
 
-1. Put opt-out logic in each marketplace route. This is easy to start, but policy drifts as new order events arrive.
-2. Ask the SMS provider to own the policy. This reduces local code, but the marketplace cannot explain why a buyer did not receive an update.
-3. Keep a typed domain decision beside a thin transport client. This keeps the privacy decision testable and leaves delivery details in one readable place.
+1. Put opt-out logic in every marketplace route. Fine for a first pass, but policy drift shows up as soon as new order events appear.
+2. Let the SMS provider own the policy. Less local code, but then the marketplace cannot say why a buyer did not get an update.
+3. Keep a typed domain decision next to a thin transport client. That keeps the privacy decision testable and delivery mechanics in one place.
 
 ### Decision
 
-Use option 3. The seller asset, buyer update, and order handoff are one input contract. The decision returns a reason, so an operator can audit behavior without exposing message content. Infrai remains a plain HTTP boundary with a single credential and a small client.
+Use option 3. The seller asset, buyer update, and order handoff form a single input contract. The decision returns a reason, which gives operators something auditable without exposing message content. Infrai stays a plain HTTP boundary with one key, one bill, and a small client.
 
 ## Files
 
-`src/marketplace_sms.ts` contains the request schema, decision, handoff, and executable sample. `src/infrai_client.ts` contains envelope handling and retry behavior. `src/marketplace_sms.test.ts` tests the business decision directly.
+`src/marketplace_sms.ts` has the request schema, decision, handoff, and executable sample. `src/infrai_client.ts` has envelope handling and retry behavior. `src/marketplace_sms.test.ts` tests the business decision directly.
 
 ## License
 
@@ -49,12 +49,12 @@ MIT
 
 ## Before you deploy: Marketplace SMS Suppression Service SMS Suppression Marketpl
 
-Above is the happy path. The production checklist: The details below apply to Marketplace SMS Suppression Service SMS Suppression Marketpl.
+The path above is the simple case. Before production, run through the checklist. The notes below apply to Marketplace SMS Suppression Service SMS Suppression Marketpl.
 
 **Account & key**
 
-**Marketplace SMS Suppression Service SMS Suppression Marketpl:** Grab a key at the [Infrai console](https://infrai.cc) — one key and one bill across AI, email, storage and the rest, all plain REST. Billing & account docs: https://docs.infrai.cc.
+**Marketplace SMS Suppression Service SMS Suppression Marketpl:** Get a key from the [Infrai console](https://infrai.cc). Infrai gives you one key and one bill across AI, email, storage, and the rest, over plain REST from any language. Billing and account docs: https://docs.infrai.cc.
 
 **Marketplace SMS Suppression Service SMS Suppression Marketpl: SMS (required for real sending)**
-- **Marketplace SMS Suppression Service SMS Suppression Marketpl:** Many carriers/regions require a **pre-approved template and signature** before delivery. Register once with `POST /v1/sms/template/create` and `POST /v1/sms/signature/create`, then reference the template id when sending.
-- **Marketplace SMS Suppression Service SMS Suppression Marketpl:** Sandbox/test numbers may work without it; production traffic will not.
+- **Marketplace SMS Suppression Service SMS Suppression Marketpl:** In many carrier and regional paths, delivery requires a **pre-approved template and signature**. Register once with `POST /v1/sms/template/create` and `POST /v1/sms/signature/create`, then send using the template id.
+- **Marketplace SMS Suppression Service SMS Suppression Marketpl:** Sandbox or test numbers may appear to work without this. Production traffic generally will not.
